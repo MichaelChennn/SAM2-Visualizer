@@ -1,1 +1,8 @@
 instruction.mp4
+
+results
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class

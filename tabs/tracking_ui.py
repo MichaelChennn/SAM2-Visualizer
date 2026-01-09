@@ -206,11 +206,13 @@ def create_tracking_tab(username_state, project_dir_state):
             masks_dir = os.path.join(proj_dir, "masks")
             metadata_path = os.path.join(proj_dir, "metadata", "metadata.json")
             
+            fps = 30
             # Update Metadata with points
             if os.path.exists(metadata_path):
                 try:
                     with open(metadata_path, "r") as f:
                         meta = json.load(f)
+                        fps = meta.get("fps", 30)
                     
                     # Save structured points for better readability
                     # e.g. [{"x": 100, "y": 200, "type": "positive"}, ...]
@@ -236,7 +238,7 @@ def create_tracking_tab(username_state, project_dir_state):
             
             try:
                 trajectory = tracker_model.propagate(frames_dir, masks_dir, points, labels)
-                generate_video_and_trajectory(proj_dir, trajectory)
+                generate_video_and_trajectory(proj_dir, trajectory, fps=fps)
                 return "Inference & Video Generation Complete! Check 'Results' tab."
             except RuntimeError as e:
                 # Catch CUDA OOM or other runtime errors

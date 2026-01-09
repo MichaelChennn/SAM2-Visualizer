@@ -108,6 +108,26 @@ def create_results_tab(username_state, project_dir_state):
             if os.path.exists(csv_path): downloads.append(csv_path)
             if os.path.exists(traj_path): downloads.append(traj_path)
             if os.path.exists(traj_trans_path): downloads.append(traj_trans_path)
+            
+            traj_smooth_path = os.path.join(proj_dir, "trajectories", "trajectory_white_bg_smoothed.png")
+            traj_trans_smooth_path = os.path.join(proj_dir, "trajectories", "trajectory_transparent_bg_smoothed.png")
+            
+            # Auto-generate smoothed plots if missing but CSV exists
+            if os.path.exists(csv_path):
+                if not os.path.exists(traj_smooth_path):
+                    try:
+                        create_trajectory_plot(proj_dir, csv_path, traj_smooth_path, smoothing=True, transparent=False)
+                    except Exception as e:
+                        print(f"Error generating smoothed white bg plot: {e}")
+
+                if not os.path.exists(traj_trans_smooth_path):
+                    try:
+                        create_trajectory_plot(proj_dir, csv_path, traj_trans_smooth_path, smoothing=True, transparent=True)
+                    except Exception as e:
+                         print(f"Error generating smoothed transparent bg plot: {e}")
+            
+            if os.path.exists(traj_smooth_path): downloads.append(traj_smooth_path)
+            if os.path.exists(traj_trans_smooth_path): downloads.append(traj_trans_smooth_path)
 
             return (
                 traj_path if os.path.exists(traj_path) else None,
@@ -148,44 +168,79 @@ def create_results_tab(username_state, project_dir_state):
             outputs=[traj_image, result_video, download_files, gallery, smoothing_chk, status_msg, metadata_display]
         )
         
-        def change_plot_view(proj_dir, plot_type):
+        def change_plot_view(proj_dir, plot_type, smoothing):
             if not proj_dir: return None
-            if "Transparent" in plot_type:
-                path = os.path.join(proj_dir, "trajectories", "trajectory_transparent_bg.png")
-                if not os.path.exists(path): # Fallback
-                    path = os.path.join(proj_dir, "trajectories", "trajectory_transparent.png")
-            else:
-                path = os.path.join(proj_dir, "trajectories", "trajectory_white_bg.png")
-                if not os.path.exists(path): # Fallback
-                    path = os.path.join(proj_dir, "trajectories", "trajectory.png")
             
+            suffix = "_smoothed.png" if smoothing else ".png"
+            bg = "transparent_bg" if "Transparent" in plot_type else "white_bg"
+            
+            # Construct expected path
+            # e.g. trajectory_white_bg.png or trajectory_white_bg_smoothed.png
+            filename = f"trajectory_{bg}{suffix}"
+            path = os.path.join(proj_dir, "trajectories", filename)
+            
+            # Fallback logic for legacy or missing smoothed files
+            if not os.path.exists(path):
+                # Try unsmoothed if smoothed missing
+                if smoothing:
+                     path = os.path.join(proj_dir, "trajectories", f"trajectory_{bg}.png")
+                
+                # Try legacy names
+                if not os.path.exists(path):
+                     legacy_name = "trajectory_transparent.png" if "Transparent" in plot_type else "trajectory.png"
+                     path = os.path.join(proj_dir, "trajectories", legacy_name)
+
             return path if os.path.exists(path) else None
 
         plot_type_radio.change(
             change_plot_view,
-            inputs=[project_dir_state, plot_type_radio],
+            inputs=[project_dir_state, plot_type_radio, smoothing_chk],
+            outputs=[traj_image]
+        )
+        
+        # Also update view when smoothing checkbox is toggled (preview only, doesn't re-generate)
+        smoothing_chk.change(
+            change_plot_view,
+            inputs=[project_dir_state, plot_type_radio, smoothing_chk],
             outputs=[traj_image]
         )
         
         def update_plot(proj_dir, smoothing, plot_type):
-            if not proj_dir: return None
+            if not proj_dir: return None, []
             
             csv_path = os.path.join(proj_dir, "trajectories", "trajectory.csv")
-            traj_path = os.path.join(proj_dir, "trajectories", "trajectory_white_bg.png")
-            traj_trans_path = os.path.join(proj_dir, "trajectories", "trajectory_transparent_bg.png")
+            
+            # Define all potential output paths
+            paths = {
+                (False, "Standard"): os.path.join(proj_dir, "trajectories", "trajectory_white_bg.png"),
+                (False, "Transparent"): os.path.join(proj_dir, "trajectories", "trajectory_transparent_bg.png"),
+                (True, "Standard"): os.path.join(proj_dir, "trajectories", "trajectory_white_bg_smoothed.png"),
+                (True, "Transparent"): os.path.join(proj_dir, "trajectories", "trajectory_transparent_bg_smoothed.png"),
+            }
             
             if os.path.exists(csv_path):
-                # Update both
-                create_trajectory_plot(proj_dir, csv_path, traj_path, smoothing=smoothing, transparent=False)
-                create_trajectory_plot(proj_dir, csv_path, traj_trans_path, smoothing=smoothing, transparent=True)
+                # Re-generate the specific requested one to ensure it reflects current smoothing setting
+                # We interpret "Update Plot" as "Force Re-generate requested plot"
+                target_key = (smoothing, "Transparent" if "Transparent" in plot_type else "Standard")
+                target_path = paths[target_key]
                 
-                if "Transparent" in plot_type:
-                    return traj_trans_path
-                return traj_path
-            return None
+                is_transparent = "Transparent" in plot_type
+                create_trajectory_plot(proj_dir, csv_path, target_path, smoothing=smoothing, transparent=is_transparent)
+                
+                # Recalculate component lists
+                downloads = []
+                # Add CSV
+                downloads.append(csv_path)
+                # Add all existing plot files to download list
+                for p in paths.values():
+                    if os.path.exists(p):
+                        downloads.append(p)
+                
+                return target_path, downloads
+            return None, []
 
         update_plot_btn.click(
             update_plot,
             inputs=[project_dir_state, smoothing_chk, plot_type_radio],
-            outputs=[traj_image]
+            outputs=[traj_image, download_files]
         )

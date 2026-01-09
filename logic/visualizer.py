@@ -231,7 +231,20 @@ def generate_video_and_trajectory(project_dir, trajectory_data, fps=30):
     
     # 1. Process CSV (Apply smoothing/filling zeros)
     df = pd.DataFrame(trajectory_data, columns=["x", "y"])
-    df = replace_zero_coordinates(df) 
+    df = replace_zero_coordinates(df)
+
+    # Add timestamp column
+    def frames_to_time(frame_idx):
+        total_seconds_float = frame_idx / fps
+        total_seconds = int(total_seconds_float)
+        millis = int((total_seconds_float - total_seconds) * 1000)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02}:{minutes:02}:{seconds:02}.{millis:03}"
+    
+    df['timestamp'] = [frames_to_time(i) for i in range(len(df))]
+    df = df[['timestamp', 'x', 'y']] # Reorder columns
+
     csv_path = os.path.join(trajectories_dir, "trajectory.csv")
     df.to_csv(csv_path, index=False)
     
@@ -243,7 +256,14 @@ def generate_video_and_trajectory(project_dir, trajectory_data, fps=30):
     traj_trans_path = os.path.join(trajectories_dir, "trajectory_transparent_bg.png")
     create_trajectory_plot(project_dir, csv_path, traj_trans_path, smoothing=False, transparent=True)
     
-    # 4. Compile Video using FFmpeg
+    # 4. Plot Trajectory (Smoothed versions)
+    traj_img_smoothed_path = os.path.join(trajectories_dir, "trajectory_white_bg_smoothed.png")
+    create_trajectory_plot(project_dir, csv_path, traj_img_smoothed_path, smoothing=True, transparent=False)
+
+    traj_trans_smoothed_path = os.path.join(trajectories_dir, "trajectory_transparent_bg_smoothed.png")
+    create_trajectory_plot(project_dir, csv_path, traj_trans_smoothed_path, smoothing=True, transparent=True)
+    
+    # 5. Compile Video using FFmpeg
     output_video_path = os.path.join(videos_dir, "output_tracked.mp4")
     if os.path.exists(output_video_path):
         os.remove(output_video_path)
